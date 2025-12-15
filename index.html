@@ -29,12 +29,13 @@
             position: absolute; top: 20px; left: 20px;
             padding: 10px 20px; background: rgba(255, 0, 0, 0.7);
             color: white; border: none; cursor: pointer; display: none; z-index: 5;
-            font-size: 1rem; border-radius: 5px;
         }
     </style>
 </head>
 <body>
 
+    <audio id="ambient-music" loop muted></audio>
+    
     <div id="main-menu">
         <h1>Cosmos Explorer</h1>
         <button class="btn" onclick="iniciarJogo('solar')">Jogar (Sistema Solar)</button>
@@ -58,30 +59,36 @@
 
         let scene, camera, renderer, controls;
         let animationId;
-        let planets = []; // Array para guardar os planetas e animar rotação
+        let planets = []; 
+        let audio; // Variável global para o elemento de áudio
         
-        // --- CONFIGURAÇÃO DE TEXTURAS ---
-        // Aqui definimos de onde o código vai ler.
-        // Se usar GitHub, substitua "textures/" pela URL Raw do seu repositório.
-        const texturePath = './textures/'; 
+        // --- CONFIGURAÇÃO DE CAMINHOS ---
+        const REPO_NAME = 'Solar-System'; 
+        
+        // Função para construir o caminho de forma robusta
+        function buildPath(folder) {
+            const isGitHubPages = window.location.host.includes('github.io');
+            if (isGitHubPages) {
+                // Caminho absoluto para GitHub Pages: /NomeDoRepo/pasta/arquivo.ext
+                return `/${REPO_NAME}/${folder}/`;
+            } else {
+                // Caminho relativo para testes locais: ./pasta/
+                return `./${folder}/`;
+            }
+        }
+
+        const texturePath = buildPath('textures'); 
+        const AUDIO_FILE_PATH = buildPath('audio') + 'space_ambient.mp3'; 
+        
         const textureLoader = new THREE.TextureLoader();
 
-        // Lista de nomes de arquivos esperados na pasta
         const textureFiles = {
-            stars: 'stars.jpg',
-            sun: 'sun.jpg',
-            mercury: 'mercury.jpg',
-            venus: 'venus.jpg',
-            earth: 'earth.jpg',
-            mars: 'mars.jpg',
-            jupiter: 'jupiter.jpg',
-            saturn: 'saturn.jpg',
-            uranus: 'uranus.jpg',
-            neptune: 'neptune.jpg',
-            worldMap: 'world_map_political.jpg' // Textura do mapa mundi
+            stars: 'stars.jpg', sun: 'sun.jpg', mercury: 'mercury.jpg', venus: 'venus.jpg',
+            earth: 'earth.jpg', moon: 'moon.jpg', mars: 'mars.jpg', jupiter: 'jupiter.jpg',
+            saturn: 'saturn.jpg', uranus: 'uranus.jpg', neptune: 'neptune.jpg',
+            worldMap: 'world_map_political.jpg' 
         };
 
-        // Função auxiliar para carregar textura com fallback de cor
         function loadTexture(name) {
             return textureLoader.load(
                 texturePath + textureFiles[name], 
@@ -91,61 +98,74 @@
             );
         }
 
-        // Inicialização básica
+        // Inicialização básica (só acontece na primeira vez)
         function init() {
             const container = document.body;
             scene = new THREE.Scene();
 
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             container.appendChild(renderer.domElement);
 
-            // Controles de Câmera (OrbitControls) - Permite mexer em todas as direções
             controls = new OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
 
-            // Luz
-            const ambientLight = new THREE.AmbientLight(0x333333);
-            scene.add(ambientLight);
-            
-            // O Sol emite luz
-            const pointLight = new THREE.PointLight(0xFFFFFF, 2, 3000);
-            scene.add(pointLight);
+            // Inicializa o elemento de áudio
+            audio = document.getElementById('ambient-music');
+            audio.src = AUDIO_FILE_PATH; // Define o caminho do GitHub/local
 
             window.addEventListener('resize', onWindowResize);
         }
 
+        // --- FUNÇÃO DE ÁUDIO COM REPRODUÇÃO NO CLIQUE ---
+        function toggleAudio(play) {
+            if (!audio) return;
+
+            if (play) {
+                // Tenta reproduzir. Isso SÓ funciona porque o usuário clicou em 'Jogar'.
+                audio.muted = false; 
+                audio.volume = 0.4; // Volume baixo para ambientação
+                audio.play().catch(e => {
+                    // Se falhar, avisa no console (geralmente por problemas de caminho)
+                    console.error("Não foi possível tocar o áudio. Verifique o caminho:", AUDIO_FILE_PATH);
+                });
+            } else {
+                audio.pause();
+            }
+        }
+
         // --- MODO 1: SISTEMA SOLAR ---
         function createSolarSystem() {
-            camera.position.set(0, 50, 150);
+            // ... (Configuração 3D do Sistema Solar) ...
             
-            // 1. Esfera de Estrelas (Background)
-            // side: THREE.BackSide faz a textura aparecer no lado DE DENTRO da esfera
+            camera.position.set(0, 300, 500);
+            
             const starGeo = new THREE.SphereGeometry(4000, 64, 64);
-            const starMat = new THREE.MeshBasicMaterial({
-                map: loadTexture('stars'),
-                side: THREE.BackSide 
-            });
-            const starMesh = new THREE.Mesh(starGeo, starMat);
-            scene.add(starMesh);
+            const starMat = new THREE.MeshBasicMaterial({ map: loadTexture('stars'), side: THREE.BackSide });
+            scene.add(new THREE.Mesh(starGeo, starMat));
 
-            // 2. O Sol
-            const sunGeo = new THREE.SphereGeometry(16, 32, 32);
+            const sunGeo = new THREE.SphereGeometry(30, 64, 64);
             const sunMat = new THREE.MeshBasicMaterial({ map: loadTexture('sun') });
             const sun = new THREE.Mesh(sunGeo, sunMat);
             scene.add(sun);
+            
+            const sunLight = new THREE.PointLight(0xFFFFFF, 500, 5000); 
+            sunLight.position.set(0, 0, 0); 
+            scene.add(sunLight);
 
-            // Dados dos planetas (tamanho relativo, distância, velocidade, nome da textura)
+            const ambientLight = new THREE.AmbientLight(0x111111); 
+            scene.add(ambientLight);
+
             const planetData = [
-                { size: 3.2, dist: 28, speed: 0.04, tex: 'mercury' },
-                { size: 5.8, dist: 44, speed: 0.015, tex: 'venus' },
-                { size: 6, dist: 62, speed: 0.01, tex: 'earth' },
-                { size: 4, dist: 78, speed: 0.008, tex: 'mars' },
-                { size: 12, dist: 100, speed: 0.002, tex: 'jupiter' },
-                { size: 10, dist: 138, speed: 0.0009, tex: 'saturn' }, // Anéis simplificados
-                { size: 7, dist: 176, speed: 0.0004, tex: 'uranus' },
-                { size: 7, dist: 200, speed: 0.0001, tex: 'neptune' }
+                { size: 0.5, dist: 150, speed: 0.04, tex: 'mercury', hasMoon: false },
+                { size: 0.8, dist: 250, speed: 0.015, tex: 'venus', hasMoon: false },
+                { size: 1.0, dist: 350, speed: 0.01, tex: 'earth', hasMoon: true },
+                { size: 0.7, dist: 500, speed: 0.008, tex: 'mars', hasMoon: false },
+                { size: 5.0, dist: 1000, speed: 0.002, tex: 'jupiter', hasMoon: false },
+                { size: 4.5, dist: 1500, speed: 0.0009, tex: 'saturn', hasMoon: false }, 
+                { size: 2.5, dist: 2000, speed: 0.0004, tex: 'uranus', hasMoon: false },
+                { size: 2.5, dist: 2500, speed: 0.0001, tex: 'neptune', hasMoon: false }
             ];
 
             planetData.forEach(data => {
@@ -153,42 +173,59 @@
                 const mat = new THREE.MeshStandardMaterial({ map: loadTexture(data.tex) });
                 const mesh = new THREE.Mesh(geo, mat);
                 
-                // Cria um "Pivô" (objeto invisível) no centro do sol para o planeta girar ao redor
                 const pivot = new THREE.Object3D();
                 pivot.add(mesh);
                 scene.add(pivot);
                 
-                mesh.position.x = data.dist; // Afasta o planeta do centro
+                mesh.position.x = data.dist;
 
-                // Salva referência para animar
+                // Lua da Terra
+                if (data.hasMoon) {
+                    const moonGeo = new THREE.SphereGeometry(data.size * 0.3, 32, 32); 
+                    const moonMat = new THREE.MeshStandardMaterial({ map: loadTexture('moon') });
+                    const moonMesh = new THREE.Mesh(moonGeo, moonMat);
+                    
+                    const moonPivot = new THREE.Object3D();
+                    moonPivot.position.x = data.dist;
+                    
+                    moonMesh.position.x = data.size * 5; 
+                    
+                    pivot.add(moonPivot); 
+                    moonPivot.add(moonMesh);
+                    planets.push({ mesh: moonMesh, pivot: moonPivot, speed: data.speed * 10 }); 
+                }
+                
                 planets.push({ mesh: mesh, pivot: pivot, speed: data.speed });
             });
         }
 
         // --- MODO 2: MAPA MUNDI ---
         function createWorldMap() {
+            // ... (Configuração 3D do Mapa Mundi) ...
+            
             camera.position.set(0, 0, 25);
 
-            // Luz extra para ver bem o mapa
-            const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 3); 
             dirLight.position.set(5, 3, 5);
             scene.add(dirLight);
 
-            // Globo Terrestre
+            const ambientLight = new THREE.AmbientLight(0x444444);
+            scene.add(ambientLight);
+
             const geo = new THREE.SphereGeometry(10, 64, 64);
             const mat = new THREE.MeshStandardMaterial({ 
                 map: loadTexture('worldMap'),
-                roughness: 0.5
+                roughness: 0.7, 
+                metalness: 0.1 
             });
             const earth = new THREE.Mesh(geo, mat);
             scene.add(earth);
 
-            // Estrelas ao fundo (reaproveitando a textura)
             const starGeo = new THREE.SphereGeometry(100, 64, 64);
             const starMat = new THREE.MeshBasicMaterial({ map: loadTexture('stars'), side: THREE.BackSide });
             scene.add(new THREE.Mesh(starGeo, starMat));
 
-            planets.push({ mesh: earth, pivot: null, speed: 0.001 }); // Apenas rotação
+            planets.push({ mesh: earth, pivot: null, speed: 0.005 });
         }
 
         // Loop de Animação
@@ -196,12 +233,9 @@
             animationId = requestAnimationFrame(animate);
             controls.update();
 
-            // Animação dos planetas
             planets.forEach(p => {
-                // Rotação em torno do próprio eixo
                 p.mesh.rotation.y += 0.005;
                 
-                // Translação (se tiver pivô)
                 if (p.pivot) {
                     p.pivot.rotation.y += p.speed;
                 }
@@ -223,21 +257,19 @@
 
             if (!renderer) init();
 
-            // Limpa a cena anterior se houver
             while(scene.children.length > 0){ 
                 scene.remove(scene.children[0]); 
             }
-            planets = []; // Reseta array de planetas
-
-            // Recria luzes básicas
-            const ambient = new THREE.AmbientLight(0x404040);
-            scene.add(ambient);
+            planets = []; 
 
             if (modo === 'solar') {
                 createSolarSystem();
             } else {
                 createWorldMap();
             }
+            
+            // INICIA O ÁUDIO AQUI
+            toggleAudio(true); 
 
             animate();
         };
@@ -246,6 +278,9 @@
             cancelAnimationFrame(animationId);
             document.getElementById('main-menu').style.display = 'flex';
             document.getElementById('back-btn').style.display = 'none';
+            
+            // PAUSA O ÁUDIO AO VOLTAR
+            toggleAudio(false); 
         }
     </script>
 </body>
