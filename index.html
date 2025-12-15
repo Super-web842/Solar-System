@@ -76,7 +76,8 @@
         
         // --- CONFIGURAÇÃO DE CAMINHOS E TAMANHO DA ESFERA ---
         const REPO_NAME = 'Solar-System'; 
-        const STAR_SPHERE_RADIUS = 20000; // NOVO: Aumentado para um valor gigante
+        // NOVO: Raio MÁXIMO da Esfera de Estrelas (50.000)
+        const STAR_SPHERE_RADIUS = 50000; 
         
         function buildPath(folder) {
             const isGitHubPages = window.location.host.includes('github.io');
@@ -112,8 +113,8 @@
             const container = document.body;
             scene = new THREE.Scene();
 
-            // Aumenta o far clip da câmera para 21000 para cobrir a nova esfera gigante
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 21000); 
+            // NOVO: Aumenta o far clip da câmera para 51000 para cobrir a esfera máxima
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 51000); 
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             container.appendChild(renderer.domElement);
@@ -148,16 +149,17 @@
 
         // --- MODO 1: SISTEMA SOLAR ---
         function createSolarSystem() {
-            // Câmera posicionada para ver o sistema inteiro na escala corrigida
-            camera.position.set(0, 50, 200); 
+            // Posição inicial da câmera ligeiramente mais afastada para ver o sistema maior
+            camera.position.set(0, 100, 300); 
             
-            // Background (NOVO RAIO: 20000)
+            // Background (RAIO MÁXIMO: 50000)
             const starGeo = new THREE.SphereGeometry(STAR_SPHERE_RADIUS, 64, 64);
             const starMat = new THREE.MeshBasicMaterial({ map: loadTexture('stars'), side: THREE.BackSide });
             scene.add(new THREE.Mesh(starGeo, starMat));
 
-            // Sol (Raio 30)
-            const sunGeo = new THREE.SphereGeometry(30, 64, 64);
+            // Sol (NOVO RAIO: 15)
+            const SUN_RADIUS = 15;
+            const sunGeo = new THREE.SphereGeometry(SUN_RADIUS, 64, 64);
             const sunMat = new THREE.MeshBasicMaterial({ map: loadTexture('sun') });
             const sun = new THREE.Mesh(sunGeo, sunMat);
             scene.add(sun);
@@ -171,17 +173,17 @@
             const ambientLight = new THREE.AmbientLight(0x050505); 
             scene.add(ambientLight);
 
-            // Dados dos planetas (ESCALA CORRIGIDA: Planetas internos mais afastados do Sol)
+            // Dados dos planetas (ESCALA FINAL: Sol menor e distâncias bem separadas)
             const planetData = [
                 // Tamanho, Distância do Sol, Velocidade de órbita, Textura, Tem Lua?
-                { size: 0.5, dist: 40, speed: 0.04, tex: 'mercury', hasMoon: false }, // Mercúrio (Fora do Sol)
-                { size: 0.8, dist: 60, speed: 0.015, tex: 'venus', hasMoon: false },  // Vênus (Fora do Sol)
+                { size: 0.5, dist: 30, speed: 0.04, tex: 'mercury', hasMoon: false }, // Mercúrio
+                { size: 0.8, dist: 50, speed: 0.015, tex: 'venus', hasMoon: false },  // Vênus
                 { size: 1.0, dist: 80, speed: 0.01, tex: 'earth', hasMoon: true },   // Terra
-                { size: 0.7, dist: 100, speed: 0.008, tex: 'mars', hasMoon: false },  // Marte
-                { size: 5.0, dist: 130, speed: 0.002, tex: 'jupiter', hasMoon: false }, // Júpiter
-                { size: 4.5, dist: 160, speed: 0.0009, tex: 'saturn', hasMoon: false }, // Saturno
-                { size: 2.5, dist: 190, speed: 0.0004, tex: 'uranus', hasMoon: false }, // Urano
-                { size: 2.5, dist: 220, speed: 0.0001, tex: 'neptune', hasMoon: false } // Netuno
+                { size: 0.7, dist: 120, speed: 0.008, tex: 'mars', hasMoon: false },  // Marte
+                { size: 5.0, dist: 250, speed: 0.002, tex: 'jupiter', hasMoon: false }, // Júpiter
+                { size: 4.5, dist: 350, speed: 0.0009, tex: 'saturn', hasMoon: false }, // Saturno
+                { size: 2.5, dist: 450, speed: 0.0004, tex: 'uranus', hasMoon: false }, // Urano
+                { size: 2.5, dist: 550, speed: 0.0001, tex: 'neptune', hasMoon: false } // Netuno
             ];
 
             planetData.forEach(data => {
@@ -283,7 +285,7 @@
 
             if (modo === 'solar') {
                 createSolarSystem();
-                // NOVO: Limite de afastamento para o modo Sistema Solar é 100 unidades menor que o raio de 20000
+                // NOVO: Limite de afastamento (maxDistance) forçado para estar dentro da esfera (50000 - 100)
                 controls.maxDistance = STAR_SPHERE_RADIUS - 100; 
             } else {
                 createWorldMap();
