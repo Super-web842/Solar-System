@@ -42,7 +42,7 @@
 </head>
 <body>
 
-    <audio id="ambient-music" loop muted></audio>
+    <audio id="ambient-music" loop muted preload="auto"></audio>
     
     <div id="main-menu">
         <h1>Cosmos Explorer</h1>
@@ -76,7 +76,7 @@
         
         // --- CONFIGURAÇÃO DE CAMINHOS E TAMANHO DA ESFERA ---
         const REPO_NAME = 'Solar-System'; 
-        const STAR_SPHERE_RADIUS = 10000; // Raio gigante para evitar bordas
+        const STAR_SPHERE_RADIUS = 10000; 
         
         function buildPath(folder) {
             const isGitHubPages = window.location.host.includes('github.io');
@@ -119,11 +119,8 @@
 
             controls = new OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
+            controls.minDistance = 1; 
             
-            // Limita o zoom MÁXIMO (afastamento) para que a câmera não saia da esfera de estrelas.
-            controls.maxDistance = STAR_SPHERE_RADIUS - 100; 
-            controls.minDistance = 1; // Permite zoom bem perto do Sol
-
             audio = document.getElementById('ambient-music');
             audio.src = AUDIO_FILE_PATH;
 
@@ -140,9 +137,10 @@
         function toggleAudio(play) {
             if (!audio) return;
             if (play) {
+                // Tenta tocar o áudio. Isso é instantâneo se o arquivo já foi pré-carregado.
                 audio.muted = false; 
                 audio.volume = 0.4;
-                audio.play().catch(e => console.error("Não foi possível tocar o áudio. Verifique o caminho:", AUDIO_FILE_PATH));
+                audio.play().catch(e => console.error("Não foi possível tocar o áudio. Verifique o caminho e tamanho do arquivo.", e));
             } else {
                 audio.pause();
             }
@@ -150,45 +148,42 @@
 
         // --- MODO 1: SISTEMA SOLAR ---
         function createSolarSystem() {
-            // Câmera posicionada para ver o sistema inteiro na escala compacta
             camera.position.set(0, 50, 150); 
             
-            // Background (Raio de 10000)
+            // Background 
             const starGeo = new THREE.SphereGeometry(STAR_SPHERE_RADIUS, 64, 64);
             const starMat = new THREE.MeshBasicMaterial({ map: loadTexture('stars'), side: THREE.BackSide });
             scene.add(new THREE.Mesh(starGeo, starMat));
 
-            // Sol (Corpo emissor de luz)
+            // Sol 
             const sunGeo = new THREE.SphereGeometry(30, 64, 64);
             const sunMat = new THREE.MeshBasicMaterial({ map: loadTexture('sun') });
             const sun = new THREE.Mesh(sunGeo, sunMat);
             scene.add(sun);
             
-            // LUZ BRANCA DO SOL (PointLight - cria as sombras)
+            // LUZ BRANCA DO SOL
             const sunLight = new THREE.PointLight(0xFFFFFF, 500, STAR_SPHERE_RADIUS * 2); 
             sunLight.position.set(0, 0, 0); 
             scene.add(sunLight);
             
-            // Luz Ambiente (MUITO fraca, apenas para não ser 100% preto)
+            // Luz Ambiente
             const ambientLight = new THREE.AmbientLight(0x050505); 
             scene.add(ambientLight);
 
-            // Dados dos planetas (ESCALA OTIMIZADA: Netuno a 130 unidades)
+            // Dados dos planetas (ESCALA SUPER COMPACTA)
             const planetData = [
-                // Tamanho, Distância do Sol, Velocidade de órbita, Textura, Tem Lua?
-                { size: 0.5, dist: 15, speed: 0.04, tex: 'mercury', hasMoon: false }, // Mercúrio
-                { size: 0.8, dist: 25, speed: 0.015, tex: 'venus', hasMoon: false },  // Vênus
-                { size: 1.0, dist: 35, speed: 0.01, tex: 'earth', hasMoon: true },   // Terra
-                { size: 0.7, dist: 50, speed: 0.008, tex: 'mars', hasMoon: false },  // Marte
-                { size: 5.0, dist: 70, speed: 0.002, tex: 'jupiter', hasMoon: false }, // Júpiter
-                { size: 4.5, dist: 90, speed: 0.0009, tex: 'saturn', hasMoon: false }, // Saturno
-                { size: 2.5, dist: 110, speed: 0.0004, tex: 'uranus', hasMoon: false }, // Urano
-                { size: 2.5, dist: 130, speed: 0.0001, tex: 'neptune', hasMoon: false } // Netuno
+                { size: 0.5, dist: 10, speed: 0.04, tex: 'mercury', hasMoon: false }, 
+                { size: 0.8, dist: 20, speed: 0.015, tex: 'venus', hasMoon: false },  
+                { size: 1.0, dist: 30, speed: 0.01, tex: 'earth', hasMoon: true },   
+                { size: 0.7, dist: 40, speed: 0.008, tex: 'mars', hasMoon: false },  
+                { size: 5.0, dist: 55, speed: 0.002, tex: 'jupiter', hasMoon: false }, 
+                { size: 4.5, dist: 70, speed: 0.0009, tex: 'saturn', hasMoon: false }, 
+                { size: 2.5, dist: 80, speed: 0.0004, tex: 'uranus', hasMoon: false }, 
+                { size: 2.5, dist: 90, speed: 0.0001, tex: 'neptune', hasMoon: false } 
             ];
 
             planetData.forEach(data => {
                 const geo = new THREE.SphereGeometry(data.size, 64, 64);
-                // MeshStandardMaterial é crucial para receber luz e projetar sombras
                 const mat = new THREE.MeshStandardMaterial({ 
                     map: loadTexture(data.tex),
                     roughness: 0.9 
@@ -222,13 +217,11 @@
         // --- MODO 2: MAPA MUNDI ---
         function createWorldMap() {
             camera.position.set(0, 0, 25);
-
-            // LUZ FORTE DIRETA
+            
             const dirLight = new THREE.DirectionalLight(0xffffff, 5); 
             dirLight.position.set(5, 3, 5);
             scene.add(dirLight);
 
-            // Luz ambiente média
             const ambientLight = new THREE.AmbientLight(0x888888); 
             scene.add(ambientLight);
 
@@ -242,12 +235,8 @@
             const earth = new THREE.Mesh(geo, mat);
             scene.add(earth);
 
-            // Background do Mapa Mundi
-            const starGeo = new THREE.SphereGeometry(100, 64, 64);
-            const starMat = new THREE.MeshBasicMaterial({ map: loadTexture('stars'), side: THREE.BackSide });
-            scene.add(new THREE.Mesh(starGeo, starMat));
-
-            planets.push({ mesh: earth, pivot: null, speed: 0.005 });
+            // Rotação automática desativada (speed = 0)
+            planets.push({ mesh: earth, pivot: null, speed: 0.0 }); 
         }
 
         // Loop de Animação
@@ -257,7 +246,9 @@
 
             if (!isPaused) {
                 planets.forEach(p => {
-                    p.mesh.rotation.y += 0.005;
+                    if (p.speed > 0) { 
+                         p.mesh.rotation.y += 0.005;
+                    }
                     
                     if (p.pivot) {
                         p.pivot.rotation.y += p.speed;
@@ -283,16 +274,6 @@
 
             if (!renderer) init();
 
-            // Reseta a distância máxima de zoom para o modo correto
-            if (modo === 'solar') {
-                controls.maxDistance = STAR_SPHERE_RADIUS - 100;
-            } else {
-                 // Modo Mapa Mundi tem uma esfera de estrelas menor
-                controls.maxDistance = 90;
-            }
-            controls.minDistance = 1; // Mantém zoom mínimo perto
-            controls.update();
-
             while(scene.children.length > 0){ 
                 scene.remove(scene.children[0]); 
             }
@@ -300,10 +281,13 @@
 
             if (modo === 'solar') {
                 createSolarSystem();
+                controls.maxDistance = STAR_SPHERE_RADIUS - 100;
             } else {
                 createWorldMap();
+                controls.maxDistance = 30;
             }
             
+            // INÍCIO INSTANTÂNEO NO CLIQUE!
             toggleAudio(true); 
             animate();
         };
