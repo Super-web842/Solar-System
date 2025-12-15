@@ -24,11 +24,19 @@
         }
         .btn:hover { background: #4facfe; color: #000; box-shadow: 0 0 20px #4facfe; }
 
-        /* Botão de Voltar */
-        #back-btn {
-            position: absolute; top: 20px; left: 20px;
-            padding: 10px 20px; background: rgba(255, 0, 0, 0.7);
-            color: white; border: none; cursor: pointer; display: none; z-index: 5;
+        /* Botões Flutuantes (Voltar e Pausar) */
+        #controls-container {
+            position: absolute; top: 20px; left: 20px; z-index: 5;
+            display: none; /* Inicia oculto */
+        }
+        #back-btn, #pause-btn {
+            padding: 10px 20px; margin-right: 10px;
+            background: rgba(255, 0, 0, 0.7);
+            color: white; border: none; cursor: pointer; 
+            font-size: 1rem; border-radius: 5px;
+        }
+        #pause-btn {
+            background: rgba(0, 150, 255, 0.7);
         }
     </style>
 </head>
@@ -42,7 +50,10 @@
         <button class="btn" onclick="iniciarJogo('mapa')">Mapa Mundi</button>
     </div>
 
-    <button id="back-btn" onclick="voltarMenu()">Voltar ao Menu</button>
+    <div id="controls-container">
+        <button id="back-btn" onclick="voltarMenu()">Voltar ao Menu</button>
+        <button id="pause-btn" onclick="togglePause()">Pausar Rotação</button>
+    </div>
 
     <script type="importmap">
         {
@@ -60,19 +71,17 @@
         let scene, camera, renderer, controls;
         let animationId;
         let planets = []; 
-        let audio; // Variável global para o elemento de áudio
+        let audio; 
+        let isPaused = false; // Novo estado para pausa
         
         // --- CONFIGURAÇÃO DE CAMINHOS ---
         const REPO_NAME = 'Solar-System'; 
         
-        // Função para construir o caminho de forma robusta
         function buildPath(folder) {
             const isGitHubPages = window.location.host.includes('github.io');
             if (isGitHubPages) {
-                // Caminho absoluto para GitHub Pages: /NomeDoRepo/pasta/arquivo.ext
                 return `/${REPO_NAME}/${folder}/`;
             } else {
-                // Caminho relativo para testes locais: ./pasta/
                 return `./${folder}/`;
             }
         }
@@ -94,11 +103,10 @@
                 texturePath + textureFiles[name], 
                 undefined, 
                 undefined, 
-                (err) => console.warn(`Textura ${name} não encontrada. Usando cor padrão.`)
+                (err) => console.warn(`Textura ${name} não encontrada em ${texturePath}${textureFiles[name]}. Usando cor padrão.`)
             );
         }
 
-        // Inicialização básica (só acontece na primeira vez)
         function init() {
             const container = document.body;
             scene = new THREE.Scene();
@@ -109,55 +117,60 @@
             container.appendChild(renderer.domElement);
 
             controls = new OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
+            controls.enableDamping = true; // Permite giro suave
+            // Configurações de zoom já estão ativas por padrão no OrbitControls (scroll/pinça)
 
-            // Inicializa o elemento de áudio
             audio = document.getElementById('ambient-music');
-            audio.src = AUDIO_FILE_PATH; // Define o caminho do GitHub/local
+            audio.src = AUDIO_FILE_PATH;
 
             window.addEventListener('resize', onWindowResize);
         }
 
-        // --- FUNÇÃO DE ÁUDIO COM REPRODUÇÃO NO CLIQUE ---
+        // --- FUNÇÕES DE CONTROLE (Pausa e Áudio) ---
+        window.togglePause = function() {
+            isPaused = !isPaused;
+            const button = document.getElementById('pause-btn');
+            button.textContent = isPaused ? 'Continuar Rotação' : 'Pausar Rotação';
+        }
+
         function toggleAudio(play) {
             if (!audio) return;
-
             if (play) {
-                // Tenta reproduzir. Isso SÓ funciona porque o usuário clicou em 'Jogar'.
                 audio.muted = false; 
-                audio.volume = 0.4; // Volume baixo para ambientação
-                audio.play().catch(e => {
-                    // Se falhar, avisa no console (geralmente por problemas de caminho)
-                    console.error("Não foi possível tocar o áudio. Verifique o caminho:", AUDIO_FILE_PATH);
-                });
+                audio.volume = 0.4;
+                audio.play().catch(e => console.error("Não foi possível tocar o áudio.", e));
             } else {
                 audio.pause();
             }
         }
 
-        // --- MODO 1: SISTEMA SOLAR ---
+        // --- MODO 1: SISTEMA SOLAR (COM ILUMINAÇÃO REALISTA E DISTÂNCIA) ---
         function createSolarSystem() {
-            // ... (Configuração 3D do Sistema Solar) ...
-            
             camera.position.set(0, 300, 500);
             
+            // Background
             const starGeo = new THREE.SphereGeometry(4000, 64, 64);
             const starMat = new THREE.MeshBasicMaterial({ map: loadTexture('stars'), side: THREE.BackSide });
             scene.add(new THREE.Mesh(starGeo, starMat));
 
+            // Sol (Corpo emissor de luz)
             const sunGeo = new THREE.SphereGeometry(30, 64, 64);
             const sunMat = new THREE.MeshBasicMaterial({ map: loadTexture('sun') });
             const sun = new THREE.Mesh(sunGeo, sunMat);
             scene.add(sun);
             
-            const sunLight = new THREE.PointLight(0xFFFFFF, 500, 5000); 
+            // LUZ BRANCA DO SOL (PointLight)
+            const sunLight = new THREE.PointLight(0xFFFFFF, 500, 5000); // 5000 é a distância máxima
             sunLight.position.set(0, 0, 0); 
             scene.add(sunLight);
-
-            const ambientLight = new THREE.AmbientLight(0x111111); 
+            
+            // Luz Ambiente (MUITO fraca, apenas para não ser 100% preto)
+            const ambientLight = new THREE.AmbientLight(0x050505); 
             scene.add(ambientLight);
 
+            // Dados dos planetas (Distâncias mais realistas em escala)
             const planetData = [
+                // Distância escalonada (em unidades Three.js)
                 { size: 0.5, dist: 150, speed: 0.04, tex: 'mercury', hasMoon: false },
                 { size: 0.8, dist: 250, speed: 0.015, tex: 'venus', hasMoon: false },
                 { size: 1.0, dist: 350, speed: 0.01, tex: 'earth', hasMoon: true },
@@ -169,14 +182,17 @@
             ];
 
             planetData.forEach(data => {
-                const geo = new THREE.SphereGeometry(data.size, 32, 32);
-                const mat = new THREE.MeshStandardMaterial({ map: loadTexture(data.tex) });
+                const geo = new THREE.SphereGeometry(data.size, 64, 64);
+                // MeshStandardMaterial: RECEBE LUZ E CRIA SOMBRAS
+                const mat = new THREE.MeshStandardMaterial({ 
+                    map: loadTexture(data.tex),
+                    roughness: 0.9 // Ajuste para parecer um corpo rochoso/gasoso
+                });
                 const mesh = new THREE.Mesh(geo, mat);
                 
                 const pivot = new THREE.Object3D();
                 pivot.add(mesh);
                 scene.add(pivot);
-                
                 mesh.position.x = data.dist;
 
                 // Lua da Terra
@@ -184,10 +200,9 @@
                     const moonGeo = new THREE.SphereGeometry(data.size * 0.3, 32, 32); 
                     const moonMat = new THREE.MeshStandardMaterial({ map: loadTexture('moon') });
                     const moonMesh = new THREE.Mesh(moonGeo, moonMat);
-                    
                     const moonPivot = new THREE.Object3D();
-                    moonPivot.position.x = data.dist;
                     
+                    moonPivot.position.x = data.dist;
                     moonMesh.position.x = data.size * 5; 
                     
                     pivot.add(moonPivot); 
@@ -199,19 +214,20 @@
             });
         }
 
-        // --- MODO 2: MAPA MUNDI ---
+        // --- MODO 2: MAPA MUNDI (CORRIGIDO) ---
         function createWorldMap() {
-            // ... (Configuração 3D do Mapa Mundi) ...
-            
             camera.position.set(0, 0, 25);
 
-            const dirLight = new THREE.DirectionalLight(0xffffff, 3); 
+            // LUZ FORTE DIRETA: Garante que a textura apareça
+            const dirLight = new THREE.DirectionalLight(0xffffff, 5); 
             dirLight.position.set(5, 3, 5);
             scene.add(dirLight);
 
-            const ambientLight = new THREE.AmbientLight(0x444444);
+            // Luz ambiente média: Evita áreas totalmente pretas
+            const ambientLight = new THREE.AmbientLight(0x888888); 
             scene.add(ambientLight);
 
+            // Globo Terrestre
             const geo = new THREE.SphereGeometry(10, 64, 64);
             const mat = new THREE.MeshStandardMaterial({ 
                 map: loadTexture('worldMap'),
@@ -221,6 +237,7 @@
             const earth = new THREE.Mesh(geo, mat);
             scene.add(earth);
 
+            // Estrelas ao fundo 
             const starGeo = new THREE.SphereGeometry(100, 64, 64);
             const starMat = new THREE.MeshBasicMaterial({ map: loadTexture('stars'), side: THREE.BackSide });
             scene.add(new THREE.Mesh(starGeo, starMat));
@@ -233,13 +250,18 @@
             animationId = requestAnimationFrame(animate);
             controls.update();
 
-            planets.forEach(p => {
-                p.mesh.rotation.y += 0.005;
-                
-                if (p.pivot) {
-                    p.pivot.rotation.y += p.speed;
-                }
-            });
+            // A rotação SÓ acontece se não estiver pausado
+            if (!isPaused) {
+                planets.forEach(p => {
+                    // Rotação em torno do próprio eixo
+                    p.mesh.rotation.y += 0.005;
+                    
+                    // Translação (órbita)
+                    if (p.pivot) {
+                        p.pivot.rotation.y += p.speed;
+                    }
+                });
+            }
 
             renderer.render(scene, camera);
         }
@@ -253,7 +275,9 @@
         // --- LÓGICA DO MENU ---
         window.iniciarJogo = function(modo) {
             document.getElementById('main-menu').style.display = 'none';
-            document.getElementById('back-btn').style.display = 'block';
+            document.getElementById('controls-container').style.display = 'flex'; // Mostra os botões de controle
+            isPaused = false;
+            document.getElementById('pause-btn').textContent = 'Pausar Rotação';
 
             if (!renderer) init();
 
@@ -268,18 +292,15 @@
                 createWorldMap();
             }
             
-            // INICIA O ÁUDIO AQUI
             toggleAudio(true); 
-
             animate();
         };
 
         window.voltarMenu = function() {
             cancelAnimationFrame(animationId);
             document.getElementById('main-menu').style.display = 'flex';
-            document.getElementById('back-btn').style.display = 'none';
+            document.getElementById('controls-container').style.display = 'none'; // Oculta os botões
             
-            // PAUSA O ÁUDIO AO VOLTAR
             toggleAudio(false); 
         }
     </script>
