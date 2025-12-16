@@ -38,6 +38,14 @@
         #pause-btn {
             background: rgba(0, 150, 255, 0.7);
         }
+        
+        /* Info dos Planetas */
+        #planet-info {
+            position: absolute; bottom: 20px; left: 20px;
+            background: rgba(0, 0, 0, 0.7); color: white;
+            padding: 15px; border-radius: 10px; max-width: 300px;
+            display: none; z-index: 5;
+        }
     </style>
 </head>
 <body>
@@ -54,6 +62,8 @@
         <button id="back-btn" onclick="voltarMenu()">Voltar ao Menu</button>
         <button id="pause-btn" onclick="togglePause()">Pausar Rotação</button>
     </div>
+    
+    <div id="planet-info"></div>
 
     <script type="importmap">
         {
@@ -72,55 +82,73 @@
         let animationId;
         let planets = []; 
         let audio; 
-        let isPaused = false; 
+        let isPaused = false;
+        let raycaster, mouse;
+        let currentHoveredPlanet = null;
         
         // --- CONFIGURAÇÃO DE CAMINHOS E ESCALAS ---
         const REPO_NAME = 'Solar-System'; 
         
-        // ESCALA CORRIGIDA (valores que sugeri)
-        const STAR_SPHERE_RADIUS = 5000; 
-        const MAX_CAMERA_DISTANCE = 4500; 
+        // ESFERA DE ESTRELAS: Aumentada em 99% (quase o dobro)
+        const STAR_SPHERE_RADIUS = 10000; // 5000 + 99% ≈ 9950, arredondado para 10000
+        const MAX_CAMERA_DISTANCE = 9000; // 4500 + 99% ≈ 8955, arredondado para 9000
         
-        // TAMANHOS DOS PLANETAS (raio em unidades)
+        // ESCALA DO SISTEMA SOLAR - VISUALMENTE BALANCEADA
+        // Base: Terra = 1.0 unidade de raio visual
         const PLANET_SIZES = {
-            sun: 25,
-            mercury: 0.4,
-            venus: 0.95,
-            earth: 1.0,
-            moon: 0.27,
-            mars: 0.5,
-            jupiter: 8,
-            saturn: 7,
-            uranus: 4,
-            neptune: 4
+            sun: 25,        // Sol reduzido (real seria 109 vezes Terra)
+            mercury: 0.4,   // Aumentado para ser visível
+            venus: 0.95,    // Quase igual à Terra
+            earth: 1.0,     // Referência
+            moon: 0.27,     // Em relação à Terra
+            mars: 0.5,      // Aumentado para visibilidade
+            jupiter: 8,     // Gigante, mas não enorme demais
+            saturn: 7,      // Um pouco menor que Júpiter
+            uranus: 4,      // Bem menor que os gigantes gasosos
+            neptune: 4      // Similar a Urano
         };
         
-        // DISTÂNCIAS DO SOL (unidades)
+        // DISTÂNCIAS DO SOL - COMPACTADAS MAS PROPORCIONAIS
+        // 1 unidade = ~1.000.000 km aproximado
         const PLANET_DISTANCES = {
-            mercury: 60,
-            venus: 100,
-            earth: 150,
-            mars: 230,
-            jupiter: 450,
-            saturn: 800,
-            uranus: 1300,
-            neptune: 1900
+            mercury: 60,    // Real: 58 milhões km
+            venus: 100,     // Real: 108 milhões km  
+            earth: 150,     // Real: 150 milhões km (1 UA)
+            mars: 230,      // Real: 228 milhões km
+            jupiter: 450,   // Real: 778 milhões km
+            saturn: 800,    // Real: 1.4 bilhões km
+            uranus: 1300,   // Real: 2.9 bilhões km
+            neptune: 1900   // Real: 4.5 bilhões km
         };
         
-        // VELOCIDADES DE ROTAÇÃO (órbita)
+        // INFORMAÇÕES DOS PLANETAS
+        const PLANET_INFO = {
+            sun: { name: "Sol", type: "Estrela", diameter: "1.392.700 km", facts: "Estrela anã amarela que fornece energia para todo o Sistema Solar" },
+            mercury: { name: "Mercúrio", type: "Planeta Rochoso", diameter: "4.879 km", facts: "O menor planeta e mais próximo do Sol" },
+            venus: { name: "Vênus", type: "Planeta Rochoso", diameter: "12.104 km", facts: "O planeta mais quente devido ao efeito estufa intenso" },
+            earth: { name: "Terra", type: "Planeta Rochoso", diameter: "12.742 km", facts: "Único planeta conhecido com vida" },
+            moon: { name: "Lua", type: "Satélite Natural", diameter: "3.474 km", facts: "Satélite natural da Terra" },
+            mars: { name: "Marte", type: "Planeta Rochoso", diameter: "6.779 km", facts: "Conhecido como 'Planeta Vermelho'" },
+            jupiter: { name: "Júpiter", type: "Planeta Gasoso", diameter: "139.820 km", facts: "O maior planeta do Sistema Solar" },
+            saturn: { name: "Saturno", type: "Planeta Gasoso", diameter: "116.460 km", facts: "Conhecido por seus anéis brilhantes" },
+            uranus: { name: "Urano", type: "Planeta Gasoso", diameter: "50.724 km", facts: "Planeta que gira de lado" },
+            neptune: { name: "Netuno", type: "Planeta Gasoso", diameter: "49.244 km", facts: "O planeta mais ventoso" }
+        };
+        
+        // VELOCIDADES DE ÓRBITA (proporcionais à distância real)
         const ORBIT_SPEEDS = {
-            mercury: 0.04,
-            venus: 0.015,
-            earth: 0.01,
-            mars: 0.008,
-            jupiter: 0.002,
-            saturn: 0.0009,
-            uranus: 0.0004,
-            neptune: 0.0001
+            mercury: 0.04,    // Mais rápido (mais próximo do Sol)
+            venus: 0.015,     // Mais lento que Mercúrio
+            earth: 0.01,      // 1 ano = 365 dias
+            mars: 0.008,      // Mais lento que Terra
+            jupiter: 0.002,   // Muito mais lento
+            saturn: 0.0009,   // Mais lento ainda
+            uranus: 0.0004,   // Muito lento
+            neptune: 0.0001   // Mais lento de todos
         };
         
-        // Fator de escala para visualização (multiplica os tamanhos reais)
-        const SIZE_SCALE_FACTOR = 20;
+        // Fator de escala visual para planetas (tamanho na tela)
+        const VISUAL_SCALE = 15; // Reduzido para ficar mais proporcional
 
         function buildPath(folder) {
             const isGitHubPages = window.location.host.includes('github.io');
@@ -140,7 +168,8 @@
             stars: 'stars.jpg', sun: 'sun.jpg', mercury: 'mercury.jpg', venus: 'venus.jpg',
             earth: 'earth.jpg', moon: 'moon.jpg', mars: 'mars.jpg', jupiter: 'jupiter.jpg',
             saturn: 'saturn.jpg', uranus: 'uranus.jpg', neptune: 'neptune.jpg',
-            worldMap: 'world_map_political.jpg' 
+            worldMap: 'world_map_political.jpg',
+            saturn_ring: 'saturn_ring.png' // Adicionar textura para anéis
         };
 
         function loadTexture(name) {
@@ -149,7 +178,11 @@
                 path, 
                 undefined, 
                 undefined, 
-                (err) => console.warn(`Textura ${name} não encontrada em ${path}. Usando cor padrão.`)
+                (err) => {
+                    console.warn(`Textura ${name} não encontrada em ${path}. Usando cor padrão.`);
+                    // Retorna material básico se textura não existir
+                    return new THREE.Color(0x888888);
+                }
             );
         }
 
@@ -157,22 +190,29 @@
             const container = document.body;
             scene = new THREE.Scene();
 
-            // Far clip da câmera ajustado para cobrir o raio de 5000
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 6000); 
+            // Camera com far clip adequado para nova esfera maior
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 12000); 
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             container.appendChild(renderer.domElement);
             
-            // Habilita o mapeamento de sombras no Renderizador
+            // Habilita sombras
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
 
+            // Controles da câmera
             controls = new OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
-            controls.minDistance = 1; 
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 5; 
+            controls.maxDistance = MAX_CAMERA_DISTANCE;
             
-            // Função de callback para limitar câmera
-            controls.addEventListener('change', limitCameraPosition);
+            // Raycaster para detecção de hover
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+            
+            // Eventos de mouse
+            window.addEventListener('mousemove', onMouseMove);
             
             audio = document.getElementById('ambient-music');
             audio.src = AUDIO_FILE_PATH;
@@ -180,19 +220,78 @@
             window.addEventListener('resize', onWindowResize);
         }
 
-        // --- FUNÇÃO PARA LIMITAR CÂMERA (IMPORTANTE!) ---
+        function onMouseMove(event) {
+            // Calcula posição do mouse normalizada
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            updateRaycaster();
+        }
+        
+        function updateRaycaster() {
+            if (!raycaster || !camera || planets.length === 0) return;
+            
+            // Atualiza raycaster
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Procura intersecções com planetas
+            const intersects = raycaster.intersectObjects(
+                planets.map(p => p.mesh).filter(mesh => mesh !== null)
+            );
+            
+            if (intersects.length > 0) {
+                const planetMesh = intersects[0].object;
+                const planetData = planets.find(p => p.mesh === planetMesh);
+                
+                if (planetData && planetData.name !== currentHoveredPlanet) {
+                    currentHoveredPlanet = planetData.name;
+                    showPlanetInfo(planetData.name);
+                    
+                    // Destacar planeta (aumentar um pouco)
+                    planetMesh.scale.setScalar(1.05);
+                }
+            } else {
+                if (currentHoveredPlanet) {
+                    currentHoveredPlanet = null;
+                    hidePlanetInfo();
+                    
+                    // Resetar escala de todos os planetas
+                    planets.forEach(p => {
+                        p.mesh.scale.setScalar(1.0);
+                    });
+                }
+            }
+        }
+        
+        function showPlanetInfo(planetName) {
+            const info = PLANET_INFO[planetName];
+            if (info) {
+                document.getElementById('planet-info').style.display = 'block';
+                document.getElementById('planet-info').innerHTML = `
+                    <h3>${info.name}</h3>
+                    <p><strong>Tipo:</strong> ${info.type}</p>
+                    <p><strong>Diâmetro:</strong> ${info.diameter}</p>
+                    <p><em>${info.facts}</em></p>
+                `;
+            }
+        }
+        
+        function hidePlanetInfo() {
+            document.getElementById('planet-info').style.display = 'none';
+        }
+
+        // --- FUNÇÃO PARA LIMITAR CÂMERA ---
         function limitCameraPosition() {
             const distance = camera.position.length();
             
             if (distance > MAX_CAMERA_DISTANCE) {
-                // Puxa a câmera de volta para o limite
                 const direction = camera.position.clone().normalize();
                 camera.position.copy(direction.multiplyScalar(MAX_CAMERA_DISTANCE));
                 controls.update();
             }
         }
 
-        // --- FUNÇÕES DE CONTROLE (Pausa e Áudio) ---
+        // --- FUNÇÕES DE CONTROLE ---
         window.togglePause = function() {
             isPaused = !isPaused;
             const button = document.getElementById('pause-btn');
@@ -203,19 +302,19 @@
             if (!audio) return;
             if (play) {
                 audio.muted = false; 
-                audio.volume = 0.4;
-                audio.play().catch(e => console.error("Não foi possível tocar o áudio. Verifique o caminho e tamanho do arquivo.", e));
+                audio.volume = 0.3;
+                audio.play().catch(e => console.error("Áudio não disponível. Verifique o caminho.", e));
             } else {
                 audio.pause();
             }
         }
 
-        // --- MODO 1: SISTEMA SOLAR ---
+        // --- MODO 1: SISTEMA SOLAR CORRETO ---
         function createSolarSystem() {
-            // Posição inicial da câmera ligeiramente mais afastada para ver o sistema
-            camera.position.set(0, 200, 700); 
+            // Posição inicial da câmera
+            camera.position.set(0, 300, 800); 
             
-            // Background (RAIO: 5000)
+            // ESFERA DE ESTRELAS (10000 unidades de raio - 99% maior)
             const starGeo = new THREE.SphereGeometry(STAR_SPHERE_RADIUS, 64, 64);
             const starMat = new THREE.MeshBasicMaterial({ 
                 map: loadTexture('stars'), 
@@ -224,135 +323,154 @@
             const starSphere = new THREE.Mesh(starGeo, starMat);
             scene.add(starSphere);
 
-            // Sol (RAIO: 25)
-            const sunGeo = new THREE.SphereGeometry(PLANET_SIZES.sun, 64, 64);
+            // SOL - Centro do Sistema
+            const sunGeo = new THREE.SphereGeometry(PLANET_SIZES.sun * VISUAL_SCALE, 64, 64);
             const sunMat = new THREE.MeshBasicMaterial({ 
                 map: loadTexture('sun'),
-                emissive: 0xffaa33,
-                emissiveIntensity: 0.5
+                emissive: 0xff6600,
+                emissiveIntensity: 0.8
             });
             const sun = new THREE.Mesh(sunGeo, sunMat);
+            sun.name = "sun";
             scene.add(sun);
             
-            // LUZ BRANCA DO SOL (PointLight)
-            const sunLight = new THREE.PointLight(0xffffff, 2, 10000); 
+            // LUZ DO SOL
+            const sunLight = new THREE.PointLight(0xffffff, 1.5, 20000); 
             sunLight.position.set(0, 0, 0); 
-            
-            // Luz do Sol EMITE SOMBRAS
             sunLight.castShadow = true; 
             sunLight.shadow.mapSize.width = 2048; 
             sunLight.shadow.mapSize.height = 2048; 
             sunLight.shadow.camera.near = 0.5;
-            sunLight.shadow.camera.far = 3000;
+            sunLight.shadow.camera.far = 5000;
             scene.add(sunLight);
             
-            // Luz Ambiente (muito fraca)
-            const ambientLight = new THREE.AmbientLight(0x020202); 
+            // Luz ambiente muito suave
+            const ambientLight = new THREE.AmbientLight(0x111111); 
             scene.add(ambientLight);
 
-            // Dados dos planetas na ordem correta
+            // ORDEM CORRETA DOS PLANETAS
             const planetOrder = ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
             
             planetOrder.forEach(planetName => {
-                const size = PLANET_SIZES[planetName] * SIZE_SCALE_FACTOR;
+                const size = PLANET_SIZES[planetName] * VISUAL_SCALE;
                 const distance = PLANET_DISTANCES[planetName];
                 const speed = ORBIT_SPEEDS[planetName];
                 
+                // Geometria do planeta
                 const geo = new THREE.SphereGeometry(size, 64, 64);
                 const mat = new THREE.MeshStandardMaterial({ 
                     map: loadTexture(planetName),
-                    roughness: 0.9 
+                    roughness: 0.8,
+                    metalness: 0.2
                 });
                 const mesh = new THREE.Mesh(geo, mat);
+                mesh.name = planetName;
                 
-                // Planetas Recebem e Projetam Sombras
+                // Sombras
                 mesh.receiveShadow = true;
                 mesh.castShadow = true; 
                 
+                // Pivot para órbita
                 const pivot = new THREE.Object3D();
                 pivot.add(mesh);
                 scene.add(pivot);
                 mesh.position.x = distance;
 
-                // Lua da Terra (apenas para Terra)
+                // LUA DA TERRA (apenas para Terra)
                 if (planetName === 'earth') {
-                    const moonSize = PLANET_SIZES.moon * SIZE_SCALE_FACTOR;
+                    const moonSize = PLANET_SIZES.moon * VISUAL_SCALE;
+                    const moonDistance = size * 2.5; // Distância proporcional
+                    
                     const moonGeo = new THREE.SphereGeometry(moonSize, 32, 32); 
                     const moonMat = new THREE.MeshStandardMaterial({ 
                         map: loadTexture('moon'),
                         roughness: 0.9
                     });
                     const moonMesh = new THREE.Mesh(moonGeo, moonMat);
+                    moonMesh.name = "moon";
                     
                     moonMesh.receiveShadow = true;
                     moonMesh.castShadow = true; 
 
-                    const moonPivot = new THREE.Object3D();
+                    // Pivot para órbita da Lua
+                    const moonOrbitPivot = new THREE.Object3D();
+                    moonOrbitPivot.position.x = distance;
                     
-                    // Posiciona o pivot da lua na Terra
-                    moonPivot.position.x = distance;
-                    // Distância da Lua à Terra
-                    moonMesh.position.x = size * 2.5; 
+                    // Lua posicionada na distância correta
+                    moonMesh.position.x = moonDistance;
                     
-                    pivot.add(moonPivot); 
-                    moonPivot.add(moonMesh);
+                    // Adiciona à cena
+                    pivot.add(moonOrbitPivot); 
+                    moonOrbitPivot.add(moonMesh);
                     
-                    // Adiciona rotação orbital da lua
+                    // Armazena dados da Lua
                     planets.push({ 
+                        name: "moon",
                         mesh: moonMesh, 
-                        pivot: moonPivot, 
-                        speed: speed * 10,
-                        orbitRadius: size * 2.5,
-                        orbitCenter: mesh.position
+                        pivot: moonOrbitPivot, 
+                        orbitSpeed: speed * 13, // Lua orbita mais rápido
+                        rotationSpeed: 0.005,
+                        size: moonSize,
+                        distance: moonDistance
                     });
                 }
                 
-                // Adiciona rotação do planeta e órbita
+                // ANÉIS DE SATURNO
+                if (planetName === 'saturn') {
+                    createPlanetRings(mesh, size);
+                }
+                
+                // Armazena dados do planeta
                 planets.push({ 
+                    name: planetName,
                     mesh: mesh, 
                     pivot: pivot, 
-                    speed: speed,
-                    rotationSpeed: 0.005
+                    orbitSpeed: speed,
+                    rotationSpeed: 0.005 + (Math.random() * 0.01), // Rotação única para cada
+                    size: size,
+                    distance: distance
                 });
             });
-            
-            // Anéis de Saturno
-            createSaturnRings();
         }
         
-        function createSaturnRings() {
-            const saturnDistance = PLANET_DISTANCES.saturn;
-            const saturnSize = PLANET_SIZES.saturn * SIZE_SCALE_FACTOR;
+        function createPlanetRings(planetMesh, planetSize) {
+            // Anéis internos
+            const innerRingGeo = new THREE.RingGeometry(planetSize * 1.5, planetSize * 2.2, 64);
+            const innerRingMat = new THREE.MeshBasicMaterial({
+                color: 0xDAA520,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.7
+            });
+            const innerRing = new THREE.Mesh(innerRingGeo, innerRingMat);
+            innerRing.rotation.x = Math.PI / 2;
+            planetMesh.add(innerRing);
             
-            // Encontrar Saturno na lista de planetas
-            const saturnIndex = planets.findIndex(p => p.mesh.position.x === saturnDistance);
-            if (saturnIndex !== -1) {
-                const saturn = planets[saturnIndex];
-                const ringGeometry = new THREE.RingGeometry(saturnSize * 1.2, saturnSize * 2.5, 64);
-                const ringMaterial = new THREE.MeshBasicMaterial({
-                    color: 0xDAA520,
-                    side: THREE.DoubleSide,
-                    transparent: true,
-                    opacity: 0.6
-                });
-                const ringMesh = new THREE.Mesh(ringGeometry, ringMaterial);
-                ringMesh.rotation.x = Math.PI / 2;
-                saturn.pivot.add(ringMesh);
-            }
+            // Anéis externos
+            const outerRingGeo = new THREE.RingGeometry(planetSize * 2.3, planetSize * 3.0, 64);
+            const outerRingMat = new THREE.MeshBasicMaterial({
+                color: 0xCD853F,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.5
+            });
+            const outerRing = new THREE.Mesh(outerRingGeo, outerRingMat);
+            outerRing.rotation.x = Math.PI / 2;
+            planetMesh.add(outerRing);
         }
 
         // --- MODO 2: MAPA MUNDI ---
         function createWorldMap() {
             camera.position.set(0, 0, 25);
             
-            const dirLight = new THREE.DirectionalLight(0xffffff, 5); 
-            dirLight.position.set(5, 3, 5);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 3); 
+            dirLight.position.set(10, 10, 10);
             scene.add(dirLight);
 
-            const ambientLight = new THREE.AmbientLight(0x888888); 
+            const ambientLight = new THREE.AmbientLight(0x666666); 
             scene.add(ambientLight);
 
-            // Globo Terrestre (Raio 10)
+            // Globo Terrestre
             const geo = new THREE.SphereGeometry(10, 64, 64);
             const mat = new THREE.MeshStandardMaterial({ 
                 map: loadTexture('worldMap'),
@@ -362,10 +480,23 @@
             const earth = new THREE.Mesh(geo, mat);
             earth.receiveShadow = true;
             earth.castShadow = true; 
+            earth.name = "earth";
             scene.add(earth);
 
-            // Rotação automática desativada (speed = 0)
-            planets.push({ mesh: earth, pivot: null, speed: 0.0, rotationSpeed: 0.002 }); 
+            // Rotação automática
+            planets.push({ 
+                name: "earth",
+                mesh: earth, 
+                pivot: null, 
+                orbitSpeed: 0,
+                rotationSpeed: 0.002,
+                size: 10,
+                distance: 0
+            });
+            
+            // Ajusta limites da câmera
+            controls.maxDistance = 50;
+            controls.minDistance = 5;
         }
 
         // Loop de Animação
@@ -373,16 +504,19 @@
             animationId = requestAnimationFrame(animate);
             controls.update();
 
+            // Aplica limite de câmera
+            limitCameraPosition();
+
             if (!isPaused) {
                 planets.forEach(p => {
-                    // Rotação do planeta
+                    // Rotação do planeta/mapa
                     if (p.rotationSpeed) {
                         p.mesh.rotation.y += p.rotationSpeed;
                     }
                     
-                    // Órbita ao redor do Sol (se tiver pivot)
-                    if (p.pivot) {
-                        p.pivot.rotation.y += p.speed;
+                    // Órbita ao redor do Sol
+                    if (p.pivot && p.orbitSpeed) {
+                        p.pivot.rotation.y += p.orbitSpeed;
                     }
                 });
             }
@@ -400,6 +534,7 @@
         window.iniciarJogo = function(modo) {
             document.getElementById('main-menu').style.display = 'none';
             document.getElementById('controls-container').style.display = 'flex';
+            document.getElementById('planet-info').style.display = 'none';
             isPaused = false;
             document.getElementById('pause-btn').textContent = 'Pausar Rotação';
 
@@ -409,21 +544,19 @@
             while(scene.children.length > 0){ 
                 scene.remove(scene.children[0]); 
             }
-            planets = []; 
+            planets = [];
+            currentHoveredPlanet = null;
 
             if (modo === 'solar') {
                 createSolarSystem();
-                // Configura limites do OrbitControls
                 controls.maxDistance = MAX_CAMERA_DISTANCE;
                 controls.minDistance = 5;
             } else {
                 createWorldMap();
-                // Limite de afastamento para o Mapa Mundi
-                controls.maxDistance = 30;
+                controls.maxDistance = 50;
                 controls.minDistance = 5;
             }
             
-            // Atualizar controls após mudar limites
             controls.update();
             
             toggleAudio(true); 
@@ -434,10 +567,10 @@
             cancelAnimationFrame(animationId);
             document.getElementById('main-menu').style.display = 'flex';
             document.getElementById('controls-container').style.display = 'none';
+            document.getElementById('planet-info').style.display = 'none';
             
             toggleAudio(false); 
             
-            // Resetar controles
             if (controls) {
                 controls.reset();
             }
@@ -445,7 +578,7 @@
         
         // Inicializar quando a página carregar
         window.addEventListener('DOMContentLoaded', () => {
-            // Pré-carregar texturas para evitar delays
+            // Pré-carregar texturas
             Object.keys(textureFiles).forEach(key => {
                 textureLoader.load(texturePath + textureFiles[key]);
             });
